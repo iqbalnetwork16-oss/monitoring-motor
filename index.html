@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="Dashboard real-time pemantauan lokasi dan sudut kemiringan sepeda motor.">
+  <title>MotorWatch — Monitoring Motor</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="MotorWatch beranda">
+        <span class="brand-mark">MW</span>
+        <span><strong>MotorWatch</strong><small>VEHICLE TELEMETRY</small></span>
+      </a>
+      <div class="top-actions">
+        <span id="connectionBadge" class="status-pill waiting"><span class="dot"></span><span id="connectionText">Menghubungkan…</span></span>
+        <button id="installBtn" class="button secondary" hidden><span>＋</span> Install App</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="welcome-row">
+        <div>
+          <p class="eyebrow">LIVE MONITORING</p>
+          <h1>Dashboard kendaraan</h1>
+          <p class="subheading">Lokasi GPS dan estimasi sudut kemiringan secara real-time.</p>
+        </div>
+        <div class="updated">Pembaruan terakhir <strong id="lastUpdated">Menunggu data…</strong></div>
+      </section>
+
+      <section class="metric-grid" aria-label="Ringkasan kendaraan">
+        <article class="metric-card accent-blue">
+          <div class="metric-heading"><span>Kecepatan GPS</span><span class="metric-icon">↗</span></div>
+          <div class="metric-value"><span id="speedValue">—</span><small>km/h</small></div>
+          <div class="metric-foot">Kecepatan dari modul GPS</div>
+        </article>
+        <article class="metric-card accent-purple">
+          <div class="metric-heading"><span>Roll</span><span class="metric-icon">↻</span></div>
+          <div class="metric-value"><span id="rollValue">—</span><small>°</small></div>
+          <div class="metric-foot">Complementary Filter</div>
+        </article>
+        <article class="metric-card accent-cyan">
+          <div class="metric-heading"><span>Pitch</span><span class="metric-icon">↕</span></div>
+          <div class="metric-value"><span id="pitchValue">—</span><small>°</small></div>
+          <div class="metric-foot">Complementary Filter</div>
+        </article>
+        <article class="metric-card accent-amber">
+          <div class="metric-heading"><span>Status GPS</span><span class="metric-icon">⌖</span></div>
+          <div class="metric-value status-value"><span id="gpsValue">MENUNGGU</span></div>
+          <div class="metric-foot" id="gpsFoot">Menunggu koordinat</div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">SENSOR IMU</p><h2>Grafik sudut</h2></div>
+            <div class="chart-controls">
+              <button class="range-btn active" data-window="60">1 mnt</button>
+              <button class="range-btn" data-window="300">5 mnt</button>
+              <button class="range-btn" data-window="900">15 mnt</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="angleChart" aria-label="Grafik Roll dan Pitch" role="img"></canvas></div>
+          <div class="legend-row"><span><i class="legend-dot roll-dot"></i> Roll (°)</span><span><i class="legend-dot pitch-dot"></i> Pitch (°)</span><span class="legend-note">Riwayat sementara selama halaman terbuka</span></div>
+        </article>
+
+        <article class="panel angle-panel">
+          <div class="panel-heading"><div><p class="eyebrow">ORIENTASI</p><h2>Sudut saat ini</h2></div><span class="live-label"><i></i> LIVE</span></div>
+          <div class="angle-visual">
+            <div class="angle-card">
+              <div class="angle-label">ROLL</div>
+              <div class="tilt-meter"><div class="tilt-center"></div><div id="rollNeedle" class="tilt-needle"></div></div>
+              <div class="angle-number" id="rollLarge">—<small>°</small></div>
+              <div class="angle-caption">Miring kiri / kanan*</div>
+            </div>
+            <div class="angle-card">
+              <div class="angle-label">PITCH</div>
+              <div class="pitch-meter"><div id="pitchBar" class="pitch-bar"></div><span class="pitch-zero"></span></div>
+              <div class="angle-number" id="pitchLarge">—<small>°</small></div>
+              <div class="angle-caption">Menunduk / mendongak*</div>
+            </div>
+          </div>
+          <p class="fine-print">*Arah fisik bergantung pada orientasi pemasangan sensor dan pemetaan sumbu di firmware.</p>
+        </article>
+      </section>
+
+      <section class="panel map-panel">
+        <div class="panel-heading map-heading">
+          <div><p class="eyebrow">PELACAKAN LOKASI</p><h2>Posisi GPS real-time</h2><p class="panel-description">Penanda mengikuti koordinat terbaru dari Firebase.</p></div>
+          <button id="recenterBtn" class="button secondary">◎ Pusatkan peta</button>
+        </div>
+        <div id="map" role="application" aria-label="Peta lokasi kendaraan"></div>
+        <div class="location-details">
+          <div class="coord-box"><span class="detail-label">LATITUDE</span><strong id="latitudeValue">—</strong></div>
+          <div class="coord-box"><span class="detail-label">LONGITUDE</span><strong id="longitudeValue">—</strong></div>
+          <button id="copyCoordsBtn" class="button secondary">Salin koordinat</button>
+          <a id="googleMapsLink" class="button primary disabled" href="#" target="_blank" rel="noopener">Buka Google Maps ↗</a>
+        </div>
+        <div class="address-box">
+          <div class="address-symbol">⌖</div>
+          <div class="address-content"><span class="detail-label">PERKIRAAN ALAMAT</span><strong id="addressValue">Menunggu koordinat GPS…</strong><p id="addressSub">Desa/kelurahan · Kecamatan · Kabupaten/kota · Provinsi · Negara</p></div>
+          <span id="addressStatus" class="address-status">Belum tersedia</span>
+        </div>
+        <p class="fine-print">Alamat diperoleh melalui reverse geocoding OpenStreetMap/Nominatim dan dapat tidak lengkap. Peta memerlukan koneksi internet.</p>
+      </section>
+
+      <section class="bottom-grid">
+        <article class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">KONDISI SISTEM</p><h2>Status perangkat</h2></div></div>
+          <div class="status-list">
+            <div><span class="status-name"><i class="status-indicator" id="gpsIndicator"></i> GPS</span><strong id="gpsStatusDetail">Menunggu</strong></div>
+            <div><span class="status-name"><i class="status-indicator" id="buzzerIndicator"></i> Buzzer</span><strong id="buzzerStatus">—</strong></div>
+            <div><span class="status-name"><i class="status-indicator" id="freshIndicator"></i> Data Firebase</span><strong id="freshStatus">Menunggu</strong></div>
+            <div><span class="status-name">Counter data</span><strong id="counterValue">—</strong></div>
+          </div>
+        </article>
+        <article class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">TELEMETRI IMU</p><h2>Data sensor</h2></div></div>
+          <div class="sensor-grid">
+            <div><span>AX</span><strong id="axValue">—</strong></div><div><span>AY</span><strong id="ayValue">—</strong></div><div><span>AZ</span><strong id="azValue">—</strong></div>
+            <div><span>GX</span><strong id="gxValue">—</strong></div><div><span>GY</span><strong id="gyValue">—</strong></div><div><span>GZ</span><strong id="gzValue">—</strong></div>
+          </div>
+          <p class="fine-print">AX/AY/AZ dan GX/GY/GZ menampilkan nilai terkalibrasi jika field tersebut tersedia. Nilai mentah tidak ditampilkan di panel ringkas.</p>
+        </article>
+      </section>
+      <footer><span>MotorWatch · Dashboard monitoring IoT</span><span>Data langsung dari Firebase Realtime Database</span></footer>
+    </main>
+  </div>
+
+  <dialog id="loginDialog" class="login-dialog">
+    <form id="loginForm" method="dialog">
+      <div class="dialog-mark">MW</div><h2>Hubungkan dashboard</h2>
+      <p>Masuk menggunakan akun Firebase Authentication yang memiliki izin membaca database.</p>
+      <label for="emailInput">Email Firebase</label><input id="emailInput" type="email" autocomplete="username" required placeholder="nama@email.com">
+      <label for="passwordInput">Password</label><input id="passwordInput" type="password" autocomplete="current-password" required placeholder="Password Firebase">
+      <p id="loginError" class="error-text" aria-live="polite"></p>
+      <button id="loginSubmit" class="button primary full-width" type="submit">Masuk dan hubungkan</button>
+      <p class="fine-print">Kredensial hanya digunakan untuk login pada sesi ini. Jangan menaruh password di file website atau repository GitHub.</p>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./script.js"></script>
+</body>
+</html>
